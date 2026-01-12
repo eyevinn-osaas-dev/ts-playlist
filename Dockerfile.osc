@@ -1,0 +1,43 @@
+FROM node:18-alpine
+
+# Install bash for OSC compatibility
+RUN apk add --no-cache bash
+
+# Create app directory and non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S appuser -u 1001 -G nodejs && \
+    mkdir -p /app && \
+    chown -R appuser:nodejs /app
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies and typescript
+RUN npm ci --only=production && \
+    npm install -g typescript http-server && \
+    npm cache clean --force
+
+# Copy application files
+COPY --chown=appuser:nodejs . .
+
+# Build the TypeScript application
+RUN npm run build
+
+# Create OSC entrypoint script (since it doesn't exist in the project)
+RUN echo '#!/bin/bash' > /usr/local/bin/osc-entrypoint.sh && \
+    echo 'exec "$@"' >> /usr/local/bin/osc-entrypoint.sh && \
+    chmod 755 /usr/local/bin/osc-entrypoint.sh
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8080
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/osc-entrypoint.sh"]
+
+# Start the application with a simple HTTP server
+CMD ["http-server", ".", "-p", "8080", "-a", "0.0.0.0"]
